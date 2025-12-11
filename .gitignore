@@ -1,0 +1,53 @@
+# Miscellaneous documentation and temporary files
+x-docs/
+
+# Node.js / npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+dist/
+build/
+.next/
+out/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Project Structure Notes:
+# ├── project/
+# │   ├── 0.0-charter/          (Project Charter - tracked)
+# │   ├── 0.1-plan/             (Project Plan - tracked)
+# │   ├── 0.2-architecture/     (Architecture & ADR - tracked)
+# │   ├── 0.3-specification/    (Specifications - tracked)
+# │   ├── 0.4-tasks/            (Task Breakdown - tracked)
+# │   ├── 0.5-test/             (Test Plans & Suites - tracked)
+# │   ├── 0.6-governance/       (Governance & RAIDD - tracked)
+# │   ├── 0.7-templates/        (Document Templates - tracked)
+# │   └── 0.8-references/       (Reference Materials - tracked)
+# └── x-docs/                   (Miscellaneous docs - NOT tracked)
+#
+# This structure keeps all project artifacts in version control
+# while excluding temporary/misc documentation in x-docs/
