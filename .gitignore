@@ -32,6 +32,9 @@ out/
 coverage/
 .nyc_output/
 
+# Review directories (all specialists and team reviews)
+**/reviews/
+
 # OS
 Thumbs.db
 .DS_Store
