@@ -421,7 +421,7 @@ bash scripts/validate-environment.sh
 | **Project Charter** | [`project/0.0-charter/0.1-hx-docling-ui-charter.md`](project/0.0-charter/0.1-hx-docling-ui-charter.md) | Complete project specification (v0.6.0, approved) |
 | **Charter Reviews** | [`project/0.0-charter/reviews/`](project/0.0-charter/reviews/) | Deep review with 23 findings (all addressed) |
 | **Claude Guide** | [`claude.md`](claude.md) | AI assistant development guide (v1.1.0) |
-| **Coding Instructions** | [`project/0.6-governance/0.6.0-laude-code-instructions.md`](project/0.6-governance/0.6.0-laude-code-instructions.md) | Detailed technical guidance |
+| **Coding Instructions** | [`project/0.6-governance/0.6.0-claude-code-instructions.md`](project/0.6-governance/0.6.0-claude-code-instructions.md) | Detailed technical guidance |
 | **Team Roster** | [`project/0.6-governance/0.6.5-team-roster.md`](project/0.6-governance/0.6.5-team-roster.md) | Agent roles and responsibilities |
 | **Lessons Learned** | [`project/0.6-governance/0.6.4-lessons-learned.md`](project/0.6-governance/0.6.4-lessons-learned.md) | Past project learnings (22 lessons) |
 
@@ -443,7 +443,7 @@ hx-docling-application/
 │   │   ├── 0.1-hx-docling-ui-charter.md  # Main charter document
 │   │   └── reviews/                      # Charter review findings (6 docs)
 │   ├── 0.6-governance/                   # Governance documents
-│   │   ├── 0.6.0-laude-code-instructions.md
+│   │   ├── 0.6.0-claude-code-instructions.md
 │   │   ├── 0.6.4-lessons-learned.md
 │   │   └── 0.6.5-team-roster.md
 │   └── 0.7-templates/                    # Document templates
