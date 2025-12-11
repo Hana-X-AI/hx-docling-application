@@ -726,7 +726,7 @@ echo "=== Validation Complete ==="
 |----------|----------|---------|
 | **Charter** | `/home/agent0/hx-docling-application/project/0.0-charter/0.1-hx-docling-ui-charter.md` | Complete project specification |
 | **Charter Review** | `/home/agent0/hx-docling-application/project/0.0-charter/reviews/` | Deep review findings (all addressed) |
-| **Coding Instructions** | `/home/agent0/hx-docling-application/project/0.6-governance/0.6.0-laude-code-instructions.md` | Detailed technical guidance |
+| **Coding Instructions** | `/home/agent0/hx-docling-application/project/0.6-governance/0.6.0-claude-code-instructions.md` | Detailed technical guidance |
 | **Team Roster** | `/home/agent0/hx-docling-application/project/0.6-governance/0.6.5-team-roster.md` | Agent roles and responsibilities |
 | **Lessons Learned** | `/home/agent0/hx-docling-application/project/0.6-governance/0.6.4-lessons-learned.md` | Past project learnings |
 
@@ -830,7 +830,7 @@ NODE_ENV=development
 4. **Quality first** - Zero TypeScript errors, 100% test coverage
 5. **Integration checkpoint is mandatory** - After Sprint 1.5
 6. **SSE resilience is critical** - Implement reconnection properly
-7. **File naming is lowercase** - `upload-zone.tsx`, not `UploadZone.tsx`
+7. **Follow file naming by type** - Components: `PascalCase.tsx` (UploadZone.tsx), Utils: `kebab-case.ts` (mcp-client.ts), see Section 7.2
 8. **Reference the charter** - When in doubt, check the charter
 
 ### 🎯 Success Indicators
