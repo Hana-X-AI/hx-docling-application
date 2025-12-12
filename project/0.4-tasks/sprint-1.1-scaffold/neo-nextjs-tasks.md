@@ -112,9 +112,9 @@ Core dependencies to install:
 ```json
 {
   "dependencies": {
-    "next": "^15.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "next": "^16.0.9",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
     "@prisma/client": "^5.22.0",
     "ioredis": "^5.4.1",
     "zod": "^3.23.8",
@@ -145,10 +145,10 @@ Core dependencies to install:
     "postcss": "^8.4.49",
     "autoprefixer": "^10.4.20",
     "@types/node": "^22.10.1",
-    "@types/react": "^19.0.1",
-    "@types/react-dom": "^19.0.1",
+    "@types/react": "^19.2.1",
+    "@types/react-dom": "^19.2.1",
     "eslint": "^9.15.0",
-    "eslint-config-next": "^15.0.3"
+    "eslint-config-next": "^15.1.0"
   }
 }
 ```
@@ -387,7 +387,10 @@ UPLOAD_PATH="/data/docling-uploads"
 SESSION_SECRET="your-session-secret-32-chars-min"
 
 # Application
-NEXT_PUBLIC_APP_URL="http://hx-cc-server.hx.dev.local:3000"
+# For local development, use localhost. For HX-Infrastructure deployment, use the appropriate hostname.
+# Local: NEXT_PUBLIC_APP_URL="http://localhost:3000"
+# Production: NEXT_PUBLIC_APP_URL="http://hx-docling-ui.hx.dev.local:3000"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
 
 ---
@@ -497,6 +500,20 @@ const eslintConfig = [
 ];
 
 export default eslintConfig;
+```
+
+```json
+// .prettierrc
+{
+  "semi": true,
+  "trailingComma": "es5",
+  "singleQuote": true,
+  "printWidth": 100,
+  "tabWidth": 2,
+  "useTabs": false,
+  "arrowParens": "always",
+  "endOfLine": "lf"
+}
 ```
 
 ---
@@ -623,6 +640,8 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
   webServer: {
     command: 'npm run dev',
