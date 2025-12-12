@@ -1502,6 +1502,7 @@ Ensure all history and job APIs properly authorize requests so users can only se
 ```typescript
 // src/lib/auth/job-authorization.ts
 
+import type { Job } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 
 export async function authorizeJobAccess(

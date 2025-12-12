@@ -618,13 +618,23 @@ type DownloadFormat = {
 export function DownloadButton({ result, activeFormat }: DownloadButtonProps) {
   const [isDownloading, setIsDownloading] = useState(false)
 
-  const getFilenameBase = () => {
+  /**
+   * Generate standardized filename: {original}_{YYYYMMDD_HHmmss}_{format}.{ext}
+   * Example: report_20240115_103045_markdown.md
+   */
+  const getFilename = (formatId: string, extension: string) => {
     const originalName = result.filename.replace(/\.[^.]+$/, '') // Remove extension
-    const timestamp = new Date(result.createdAt)
-      .toISOString()
-      .replace(/[:.]/g, '-')
-      .slice(0, 19)
-    return `${originalName}_${timestamp}`
+    const date = new Date(result.createdAt)
+    const timestamp = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+      '_',
+      String(date.getHours()).padStart(2, '0'),
+      String(date.getMinutes()).padStart(2, '0'),
+      String(date.getSeconds()).padStart(2, '0'),
+    ].join('')
+    return `${originalName}_${timestamp}_${formatId}.${extension}`
   }
 
   const formats: DownloadFormat[] = [
@@ -670,7 +680,7 @@ export function DownloadButton({ result, activeFormat }: DownloadButtonProps) {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${getFilenameBase()}.${format.extension}`
+      link.download = getFilename(format.id, format.extension)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -712,7 +722,9 @@ export function DownloadButton({ result, activeFormat }: DownloadButtonProps) {
 ### Technical Notes
 
 - **Reference**: Specification FR-602, Implementation Plan Sprint 1.6 Tasks 6-7
-- **Filename Convention**: `{original}_{ISO-8601-timestamp}.{ext}`
+- **Filename Convention**: `{original}_{YYYYMMDD_HHmmss}_{format}.{ext}`
+  - Example: `report_20240115_103045_markdown.md`
+  - Format suffix disambiguates multiple downloads of the same document
 - **Blob API**: Creates downloadable file in browser
 - **URL Management**: `createObjectURL` and `revokeObjectURL` for memory cleanup
 - **Format Detection**: Only shows formats with available content
@@ -783,29 +795,44 @@ interface PartialResultBadgeProps {
 export function PartialResultBadge({ failedExports = [] }: PartialResultBadgeProps) {
   if (failedExports.length === 0) {
     return (
-      <Badge variant="default" className="bg-green-600">
-        <CheckCircle className="h-3 w-3 mr-1" />
+      <Badge
+        variant="default"
+        className="bg-green-600"
+        role="status"
+        aria-label="Export status: Complete"
+      >
+        <CheckCircle className="h-3 w-3 mr-1" aria-hidden="true" />
         Complete
       </Badge>
     )
   }
 
+  const failedCount = failedExports.length
+  const statusMessage = `Partial result: ${failedCount} export${failedCount > 1 ? 's' : ''} failed`
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge variant="destructive" className="bg-orange-600 hover:bg-orange-700">
-            <AlertTriangle className="h-3 w-3 mr-1" />
+          {/* tabIndex enables keyboard focus for tooltip accessibility */}
+          <Badge
+            variant="destructive"
+            className="bg-orange-600 hover:bg-orange-700 cursor-pointer"
+            role="status"
+            aria-label={statusMessage}
+            tabIndex={0}
+          >
+            <AlertTriangle className="h-3 w-3 mr-1" aria-hidden="true" />
             Partial Result
           </Badge>
         </TooltipTrigger>
-        <TooltipContent>
+        <TooltipContent role="tooltip" aria-live="polite">
           <div className="space-y-2">
             <p className="font-semibold">Some exports failed:</p>
-            <ul className="list-disc list-inside space-y-1">
+            <ul className="list-disc list-inside space-y-1" aria-label="Failed exports">
               {failedExports.map((format) => (
                 <li key={format} className="flex items-center gap-2">
-                  <XCircle className="h-3 w-3 text-red-500" />
+                  <XCircle className="h-3 w-3 text-red-500" aria-hidden="true" />
                   {format}
                 </li>
               ))}

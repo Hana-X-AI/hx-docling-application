@@ -391,7 +391,8 @@ describe('JsonView', () => {
     const toggle = screen.getByRole('button', { name: /collapse/i });
     await user.click(toggle);
 
-    expect(screen.queryByText(/"Section 1"/)).not.toBeVisible();
+    // Collapsed content is removed from DOM, not just hidden
+    expect(screen.queryByText(/"Section 1"/)).not.toBeInTheDocument();
   });
 });
 

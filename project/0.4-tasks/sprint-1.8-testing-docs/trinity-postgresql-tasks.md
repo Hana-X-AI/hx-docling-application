@@ -143,6 +143,18 @@ describe('API Database Integration Tests', () => {
   });
 
   describe('Job Status State Machine', () => {
+    /**
+     * IMPORTANT: State transitions MUST be atomic to prevent TOCTOU race conditions.
+     * Use updateMany with status predicate instead of findUnique + validate + update.
+     *
+     * Pattern:
+     *   const updated = await prisma.job.updateMany({
+     *     where: { id: jobId, status: expectedCurrentStatus },
+     *     data: { status: newStatus },
+     *   });
+     *   if (updated.count === 0) throw new AppError('E701', 'Invalid state transition', 409);
+     */
+
     it('transitions through valid states: PENDING → UPLOADING → PROCESSING → COMPLETE', async () => {
       const job = await prisma.job.create({
         data: {
@@ -152,34 +164,60 @@ describe('API Database Integration Tests', () => {
         },
       });
 
-      // Transition: PENDING → UPLOADING
-      await prisma.job.update({
-        where: { id: job.id },
+      // Atomic transition: PENDING → UPLOADING (prevents race conditions)
+      const pendingToUploading = await prisma.job.updateMany({
+        where: { id: job.id, status: 'PENDING' },
         data: { status: 'UPLOADING' },
       });
+      expect(pendingToUploading.count).toBe(1);
 
       let currentJob = await prisma.job.findUnique({ where: { id: job.id } });
       expect(currentJob?.status).toBe('UPLOADING');
 
-      // Transition: UPLOADING → PROCESSING
-      await prisma.job.update({
-        where: { id: job.id },
+      // Atomic transition: UPLOADING → PROCESSING
+      const uploadingToProcessing = await prisma.job.updateMany({
+        where: { id: job.id, status: 'UPLOADING' },
         data: { status: 'PROCESSING', startedAt: new Date() },
       });
+      expect(uploadingToProcessing.count).toBe(1);
 
       currentJob = await prisma.job.findUnique({ where: { id: job.id } });
       expect(currentJob?.status).toBe('PROCESSING');
       expect(currentJob?.startedAt).toBeDefined();
 
-      // Transition: PROCESSING → COMPLETE
-      await prisma.job.update({
-        where: { id: job.id },
+      // Atomic transition: PROCESSING → COMPLETE
+      const processingToComplete = await prisma.job.updateMany({
+        where: { id: job.id, status: 'PROCESSING' },
         data: { status: 'COMPLETE', completedAt: new Date() },
       });
+      expect(processingToComplete.count).toBe(1);
 
       currentJob = await prisma.job.findUnique({ where: { id: job.id } });
       expect(currentJob?.status).toBe('COMPLETE');
       expect(currentJob?.completedAt).toBeDefined();
+    });
+
+    it('rejects invalid state transition (atomic check)', async () => {
+      const job = await prisma.job.create({
+        data: {
+          sessionId: 'invalid-transition-test',
+          status: 'PENDING',
+          inputType: 'FILE',
+        },
+      });
+
+      // Attempt to transition PENDING → PROCESSING (invalid, must go through UPLOADING)
+      const invalidTransition = await prisma.job.updateMany({
+        where: { id: job.id, status: 'UPLOADING' }, // Job is PENDING, not UPLOADING
+        data: { status: 'PROCESSING' },
+      });
+
+      // Atomic check: count === 0 means transition was rejected
+      expect(invalidTransition.count).toBe(0);
+
+      // Verify job status unchanged
+      const currentJob = await prisma.job.findUnique({ where: { id: job.id } });
+      expect(currentJob?.status).toBe('PENDING');
     });
 
     it('handles retry states: PROCESSING → RETRY_PROCESSING → PROCESSING', async () => {
@@ -193,27 +231,61 @@ describe('API Database Integration Tests', () => {
         },
       });
 
-      // Transition to RETRY_PROCESSING
+      // Atomic transition to RETRY_PROCESSING
+      const toRetry = await prisma.job.updateMany({
+        where: { id: job.id, status: 'PROCESSING' },
+        data: { status: 'RETRY_PROCESSING' },
+      });
+      expect(toRetry.count).toBe(1);
+
+      // Increment retry count separately (or use raw SQL for atomic increment)
       await prisma.job.update({
         where: { id: job.id },
-        data: {
-          status: 'RETRY_PROCESSING',
-          retryCount: { increment: 1 },
-        },
+        data: { retryCount: { increment: 1 } },
       });
 
       let currentJob = await prisma.job.findUnique({ where: { id: job.id } });
       expect(currentJob?.status).toBe('RETRY_PROCESSING');
       expect(currentJob?.retryCount).toBe(1);
 
-      // Transition back to PROCESSING
-      await prisma.job.update({
-        where: { id: job.id },
+      // Atomic transition back to PROCESSING
+      const backToProcessing = await prisma.job.updateMany({
+        where: { id: job.id, status: 'RETRY_PROCESSING' },
         data: { status: 'PROCESSING' },
       });
+      expect(backToProcessing.count).toBe(1);
 
       currentJob = await prisma.job.findUnique({ where: { id: job.id } });
       expect(currentJob?.status).toBe('PROCESSING');
+    });
+
+    it('prevents double-processing race condition', async () => {
+      const job = await prisma.job.create({
+        data: {
+          sessionId: 'race-test',
+          status: 'PENDING',
+          inputType: 'FILE',
+        },
+      });
+
+      // Simulate two concurrent requests trying to start processing
+      const [request1, request2] = await Promise.all([
+        prisma.job.updateMany({
+          where: { id: job.id, status: 'PENDING' },
+          data: { status: 'UPLOADING' },
+        }),
+        prisma.job.updateMany({
+          where: { id: job.id, status: 'PENDING' },
+          data: { status: 'UPLOADING' },
+        }),
+      ]);
+
+      // Only ONE request should succeed (atomic guarantee)
+      expect(request1.count + request2.count).toBe(1);
+
+      // Job should be in UPLOADING state
+      const currentJob = await prisma.job.findUnique({ where: { id: job.id } });
+      expect(currentJob?.status).toBe('UPLOADING');
     });
   });
 
@@ -343,11 +415,25 @@ Execute a full backup and restore test cycle to verify that backup procedures wo
 
 set -e
 
-DB_HOST="hx-postgres-server.hx.dev.local"
-DB_PORT="5432"
-DB_USER="postgres"
-DB_NAME="docling_db"
-BACKUP_DIR="/data/backups/docling-db"
+# Use environment variables with defaults
+DB_HOST="${DB_HOST:-hx-postgres-server.hx.dev.local}"
+DB_PORT="${DB_PORT:-5432}"
+DB_USER="${DB_USER:-postgres}"
+DB_NAME="${DB_NAME:-docling_db}"
+BACKUP_DIR="${BACKUP_DIR:-/data/backups/docling-db}"
+
+# Ensure required variables are set
+if [ -z "$DB_HOST" ] || [ -z "$DB_USER" ] || [ -z "$DB_NAME" ]; then
+  echo "ERROR: DB_HOST, DB_USER, and DB_NAME must be set"
+  exit 1
+fi
+
+# Password should be in .pgpass file or PGPASSWORD environment variable
+if [ -z "$PGPASSWORD" ] && [ ! -f ~/.pgpass ]; then
+  echo "ERROR: PGPASSWORD environment variable or ~/.pgpass required"
+  exit 1
+fi
+
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/test-backup-${TIMESTAMP}.dump"
 
@@ -370,7 +456,7 @@ echo "Backup created: ${BACKUP_FILE} (${BACKUP_SIZE})"
 
 # Step 2: Create test database for restore
 echo "Step 2: Creating test database..."
-createdb -h "${DB_HOST}" -U "${DB_USER}" docling_db_restore_test
+createdb -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" docling_db_restore_test
 
 # Step 3: Restore backup to test database
 echo "Step 3: Restoring backup..."
@@ -424,6 +510,8 @@ echo "Backup Size: ${BACKUP_SIZE}"
 - Document restore time to validate RTO <1 hour
 - Test restore procedure quarterly to ensure it remains valid
 - Coordinate with William Chen for automated backup scheduling
+- **Password Handling**: Use `~/.pgpass` file (chmod 600) or `PGPASSWORD` environment variable (not in code or scripts)
+- **Example**: `export PGPASSWORD='...' && bash test-backup-restore.sh`
 
 ---
 

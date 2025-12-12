@@ -414,6 +414,7 @@ Write unit tests for the SSE connection manager covering connection establishmen
 ```typescript
 // src/lib/sse/__tests__/manager.test.ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { waitFor } from '@testing-library/react';
 import { SSEManager } from '../manager';
 
 // Mock EventSource
@@ -472,7 +473,7 @@ describe('SSEManager', () => {
 
       manager.connect(mockUrl);
 
-      await vi.waitFor(() => {
+      await waitFor(() => {
         expect(onConnect).toHaveBeenCalled();
       });
     });
@@ -488,7 +489,7 @@ describe('SSEManager', () => {
 
       manager.connect(mockUrl);
 
-      await vi.waitFor(() => {
+      await waitFor(() => {
         expect(manager.isConnected).toBe(true);
       });
     });
@@ -500,7 +501,7 @@ describe('SSEManager', () => {
       manager.on('progress', onProgress);
       manager.connect(mockUrl);
 
-      await vi.waitFor(() => manager.isConnected);
+      await waitFor(() => expect(manager.isConnected).toBe(true));
 
       MockEventSource.instances[0].simulateMessage(
         JSON.stringify({ stage: 'conversion', percent: 50, message: 'Processing...' }),
@@ -519,7 +520,7 @@ describe('SSEManager', () => {
       manager.on('complete', onComplete);
       manager.connect(mockUrl);
 
-      await vi.waitFor(() => manager.isConnected);
+      await waitFor(() => expect(manager.isConnected).toBe(true));
 
       MockEventSource.instances[0].simulateMessage(
         JSON.stringify({ type: 'complete', jobId: 'job-123' })
@@ -533,7 +534,7 @@ describe('SSEManager', () => {
       manager.on('error', onError);
       manager.connect(mockUrl);
 
-      await vi.waitFor(() => manager.isConnected);
+      await waitFor(() => expect(manager.isConnected).toBe(true));
 
       MockEventSource.instances[0].simulateMessage(
         JSON.stringify({ type: 'error', code: 'E204', message: 'Processing failed' })
@@ -551,7 +552,7 @@ describe('SSEManager', () => {
       manager.on('disconnected', onDisconnect);
       manager.connect(mockUrl);
 
-      await vi.waitFor(() => manager.isConnected);
+      await waitFor(() => expect(manager.isConnected).toBe(true));
 
       MockEventSource.instances[0].simulateError();
 
@@ -560,7 +561,7 @@ describe('SSEManager', () => {
 
     it('can close connection manually', async () => {
       manager.connect(mockUrl);
-      await vi.waitFor(() => manager.isConnected);
+      await waitFor(() => expect(manager.isConnected).toBe(true));
 
       manager.close();
 
@@ -572,7 +573,7 @@ describe('SSEManager', () => {
   describe('Last-Event-ID', () => {
     it('tracks last event ID', async () => {
       manager.connect(mockUrl);
-      await vi.waitFor(() => manager.isConnected);
+      await waitFor(() => expect(manager.isConnected).toBe(true));
 
       MockEventSource.instances[0].simulateMessage('{}', 'event-5');
 
@@ -735,13 +736,22 @@ describe('SSE Reconnection', () => {
 
   describe('Grace Period', () => {
     it('completes reconnection within 30s grace period', () => {
-      const startTime = Date.now();
+      // First reconnect attempt should happen within initial delay (1000ms)
       reconnectManager.scheduleReconnect();
 
-      vi.advanceTimersByTime(30000);
+      // Verify connect function is not called immediately
+      expect(connectFn).not.toHaveBeenCalled();
 
-      expect(connectFn).toHaveBeenCalled();
-      expect(Date.now() - startTime).toBeLessThanOrEqual(30000);
+      // Advance past initial backoff delay
+      vi.advanceTimersByTime(1000);
+
+      // First reconnect should have been triggered
+      expect(connectFn).toHaveBeenCalledTimes(1);
+
+      // Total time to reach max retries within grace period:
+      // 1s + 2s + 4s + 8s + 16s = 31s for first 5 attempts
+      // All initial backoff delays < 30s individually satisfy grace period
+      expect(reconnectManager.nextDelay).toBeLessThanOrEqual(30000);
     });
   });
 });

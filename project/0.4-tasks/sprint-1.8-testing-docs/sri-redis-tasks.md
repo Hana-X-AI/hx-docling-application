@@ -36,7 +36,7 @@ This task file covers Redis testing and documentation tasks for Sprint 1.8. Sri 
 **Acceptance Criteria**:
 - [ ] Test Redis client singleton pattern (same instance returned)
 - [ ] Test TLS configuration loading when `REDIS_TLS_ENABLED=true`
-- [ ] Test connection retry strategy (exponential backoff)
+- [ ] Test connection retry strategy (linear backoff: 100ms × attempt, max 3s)
 - [ ] Test connection timeout behavior
 - [ ] Test command timeout behavior
 - [ ] Test graceful handling of connection failures
@@ -86,11 +86,11 @@ describe('Redis Client', () => {
   });
 
   describe('Retry Strategy', () => {
-    it('implements exponential backoff', () => {
-      // Test retry delay calculation
-      expect(retryStrategy(1)).toBe(100);
-      expect(retryStrategy(5)).toBe(500);
-      expect(retryStrategy(30)).toBe(3000); // Max 3s
+    it('implements linear backoff (100ms × attempt, max 3s)', () => {
+      // Test retry delay calculation: 100ms × attempt_count, capped at 3000ms
+      expect(retryStrategy(1)).toBe(100);   // 100 × 1 = 100ms
+      expect(retryStrategy(5)).toBe(500);   // 100 × 5 = 500ms
+      expect(retryStrategy(30)).toBe(3000); // 100 × 30 = 3000ms (max cap)
     });
 
     it('stops retrying after 10 attempts', () => {
@@ -141,6 +141,7 @@ describe('Redis Client', () => {
 ```typescript
 import { checkRateLimit, checkRateLimitWithFallback, FallbackStrategy } from '@/lib/redis/rate-limit';
 import { redis } from '@/lib/redis/client';
+import * as circuitBreaker from '@/lib/redis/circuit-breaker';
 
 describe('Rate Limiting', () => {
   const testSessionId = 'test-session-' + Date.now();
@@ -191,17 +192,27 @@ describe('Rate Limiting', () => {
   });
 
   describe('Circuit Breaker Integration', () => {
+    beforeEach(() => {
+      // Mock circuit breaker to be in OPEN state
+      jest.spyOn(circuitBreaker, 'getState').mockReturnValue('OPEN');
+      jest.spyOn(circuitBreaker, 'isOpen').mockReturnValue(true);
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
     it('uses in-memory fallback when circuit is open', async () => {
-      // Mock circuit breaker open state
       const result = await checkRateLimitWithFallback(
         testSessionId,
         FallbackStrategy.IN_MEMORY
       );
-      expect(result.allowed).toBeDefined();
+      // IN_MEMORY fallback allows requests (tracks locally) when Redis is unavailable
+      expect(result.allowed).toBe(true);
+      expect(result.remaining).toBeGreaterThanOrEqual(0);
     });
 
     it('throws ServiceUnavailableError with FAIL_FAST strategy', async () => {
-      // Mock circuit breaker open state
       await expect(
         checkRateLimitWithFallback(testSessionId, FallbackStrategy.FAIL_FAST)
       ).rejects.toThrow('Rate limiting service unavailable');

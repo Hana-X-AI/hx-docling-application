@@ -728,6 +728,60 @@ const DEFAULT_CONFIG: RateLimitConfig = {
   maxRequests: 10,
 };
 
+// Atomic Lua script for sliding-window rate limiting
+// Performs removal, count, conditional add, and expire in a single atomic operation
+// KEYS[1] = rate limit key
+// ARGV[1] = current timestamp (now)
+// ARGV[2] = window start timestamp (now - windowMs)
+// ARGV[3] = max requests allowed
+// ARGV[4] = TTL in seconds
+// ARGV[5] = unique member ID for this request
+// Returns: [allowed (0 or 1), current count after operation, oldest timestamp or 0]
+const RATE_LIMIT_SCRIPT = `
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local windowStart = tonumber(ARGV[2])
+local maxRequests = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[4])
+local memberId = ARGV[5]
+
+-- Remove expired entries (outside the sliding window)
+redis.call('ZREMRANGEBYSCORE', key, '-inf', windowStart)
+
+-- Get current count
+local currentCount = redis.call('ZCARD', key)
+
+-- Check if rate limit exceeded
+if currentCount >= maxRequests then
+  -- Get oldest request timestamp for resetAt calculation
+  local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+  local oldestTimestamp = 0
+  if #oldest >= 2 then
+    oldestTimestamp = tonumber(oldest[2])
+  end
+  return {0, currentCount, oldestTimestamp}
+end
+
+-- Add current request with unique member ID
+redis.call('ZADD', key, now, memberId)
+
+-- Set expiry on the key
+redis.call('EXPIRE', key, ttl)
+
+-- Return allowed, new count, and 0 for oldest (not needed when allowed)
+return {1, currentCount + 1, 0}
+`;
+
+// Cache the script SHA for EVALSHA optimization
+let scriptSha: string | null = null;
+
+async function loadScript(): Promise<string> {
+  if (!scriptSha) {
+    scriptSha = await redis.scriptLoad(RATE_LIMIT_SCRIPT);
+  }
+  return scriptSha;
+}
+
 export async function checkRateLimit(
   sessionId: string,
   endpoint: string,
@@ -737,28 +791,59 @@ export async function checkRateLimit(
   const now = Date.now();
   const windowStart = now - windowMs;
   const key = `ratelimit:${sessionId}:${endpoint}`;
+  const ttl = Math.ceil(windowMs / 1000);
+  const memberId = `${now}-${Math.random().toString(36).slice(2)}`;
 
   return redisCircuitBreaker.execute(
     async () => {
-      // Sliding window: count requests in last windowMs
-      await redis.zremrangebyscore(key, '-inf', windowStart.toString());
-      const requestCount = await redis.zcard(key);
+      let result: [number, number, number];
 
-      if (requestCount >= maxRequests) {
-        const oldestRequest = await redis.zrange(key, 0, 0, 'WITHSCORES');
-        const resetAt = oldestRequest.length > 1
-          ? parseInt(oldestRequest[1]) + windowMs
+      try {
+        // Try EVALSHA first (more efficient if script is cached)
+        const sha = await loadScript();
+        result = await redis.evalsha(
+          sha,
+          1,
+          key,
+          now.toString(),
+          windowStart.toString(),
+          maxRequests.toString(),
+          ttl.toString(),
+          memberId
+        ) as [number, number, number];
+      } catch (error: unknown) {
+        // If NOSCRIPT error, fall back to EVAL (script not in cache)
+        if (error instanceof Error && error.message.includes('NOSCRIPT')) {
+          scriptSha = null; // Reset cached SHA
+          result = await redis.eval(
+            RATE_LIMIT_SCRIPT,
+            1,
+            key,
+            now.toString(),
+            windowStart.toString(),
+            maxRequests.toString(),
+            ttl.toString(),
+            memberId
+          ) as [number, number, number];
+        } else {
+          throw error;
+        }
+      }
+
+      const [allowed, currentCount, oldestTimestamp] = result;
+
+      if (allowed === 0) {
+        // Rate limit exceeded
+        const resetAt = oldestTimestamp > 0
+          ? oldestTimestamp + windowMs
           : now + windowMs;
         return { allowed: false, remaining: 0, resetAt };
       }
 
-      // Add current request to sliding window
-      await redis.zadd(key, now.toString(), `${now}-${Math.random()}`);
-      await redis.expire(key, Math.ceil(windowMs / 1000));
-
+      // Request allowed
       return {
         allowed: true,
-        remaining: maxRequests - requestCount - 1,
+        remaining: maxRequests - currentCount,
         resetAt: now + windowMs,
       };
     },

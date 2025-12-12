@@ -152,11 +152,11 @@
 | DropdownMenu | - | 1.6 | 1 |
 | Separator | - | 1.7 | 1 |
 
-**Additional Components to Install**:
-- Badge: `npx shadcn@latest add badge`
-- Alert: `npx shadcn@latest add alert`
-- DropdownMenu: `npx shadcn@latest add dropdown-menu`
-- Separator: `npx shadcn@latest add separator`
+**Additional Components to Install (per sprint usage)**:
+- Badge (Sprint 1.6): `npx shadcn@latest add badge` — partial results indicator
+- Alert (Sprint 1.4): `npx shadcn@latest add alert` — URL validation error display
+- DropdownMenu (Sprint 1.6): `npx shadcn@latest add dropdown-menu` — download format selection
+- Separator (Sprint 1.7): `npx shadcn@latest add separator` — history list visual dividers
 
 ---
 

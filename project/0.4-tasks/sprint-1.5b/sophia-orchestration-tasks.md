@@ -189,36 +189,76 @@ export interface ExportResultMap {
 - Merge partial data: useful for incremental export results
 
 ```typescript
+import { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
+import { logger } from '@/lib/logger';
+import { calculateChecksum } from './checksum';
+import { CHECKPOINT_VERSION, CheckpointStage, Checkpoint } from './types';
+import { CheckpointSaveError } from './errors';
+
+// Stage ordering for progression validation
+const STAGE_ORDER: Record<CheckpointStage, number> = {
+  upload_received: 0,
+  conversion_complete: 1,
+  chunking_complete: 2,
+  export_complete: 3,
+};
+
+function isValidStageProgression(
+  currentStage: CheckpointStage,
+  newStage: CheckpointStage
+): boolean {
+  return STAGE_ORDER[newStage] >= STAGE_ORDER[currentStage];
+}
+
 // Per Specification Section 5.5
 export async function saveCheckpoint(
   jobId: string,
   stage: CheckpointStage,
   data: Partial<Checkpoint>
 ): Promise<void> {
-  const now = new Date();
-  const ttlHours = parseInt(process.env.JOB_CHECKPOINT_TTL_HOURS || '24', 10);
-  const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
+  try {
+    // Load existing checkpoint for merge (support partial updates)
+    const existing = await loadCheckpoint(jobId).catch(() => null);
 
-  const checkpoint: Checkpoint = {
-    jobId,
-    version: CHECKPOINT_VERSION,
-    stage,
-    stageCompletedAt: now.toISOString(),
-    exportResults: {},
-    ...data,
-    savedAt: now.toISOString(),
-    expiresAt: expiresAt.toISOString(),
-  };
+    // Validate stage progression
+    if (existing && !isValidStageProgression(existing.stage, stage)) {
+      logger.warn(
+        { jobId, currentStage: existing.stage, newStage: stage },
+        'Stage regression detected'
+      );
+    }
 
-  checkpoint.checksum = calculateChecksum(checkpoint);
+    const now = new Date();
+    const ttlHours = parseInt(process.env.JOB_CHECKPOINT_TTL_HOURS || '24', 10);
+    const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
 
-  await prisma.job.update({
-    where: { id: jobId },
-    data: {
-      checkpointData: checkpoint as Prisma.InputJsonValue,
-      currentStage: stage,
-    },
-  });
+    const checkpoint: Checkpoint = {
+      jobId,
+      version: CHECKPOINT_VERSION,
+      stage,
+      stageCompletedAt: now.toISOString(),
+      exportResults: existing?.exportResults ?? {},
+      ...data,
+      savedAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    };
+
+    checkpoint.checksum = calculateChecksum(checkpoint);
+
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        checkpointData: checkpoint as Prisma.InputJsonValue,
+        currentStage: stage,
+      },
+    });
+
+    logger.info({ jobId, stage }, 'Checkpoint saved successfully');
+  } catch (error) {
+    logger.error({ jobId, stage, error }, 'Failed to save checkpoint');
+    throw new CheckpointSaveError(jobId, stage, error);
+  }
 }
 ```
 
@@ -262,25 +302,35 @@ export async function loadCheckpoint(jobId: string): Promise<Checkpoint | null> 
     select: { checkpointData: true },
   });
 
-  if (!job?.checkpointData) return null;
+  if (!job?.checkpointData) {
+    logger.debug({ jobId }, 'No checkpoint found for job');
+    return null;
+  }
 
   const checkpoint = job.checkpointData as unknown as Checkpoint;
 
   // Validate expiry
   if (new Date(checkpoint.expiresAt) < new Date()) {
+    logger.info({ jobId, expiresAt: checkpoint.expiresAt }, 'Checkpoint expired, clearing');
     await clearCheckpoint(jobId);
     return null;
   }
 
-  // Validate checksum
+  // Validate checksum - work on a shallow copy to avoid mutation
   const savedChecksum = checkpoint.checksum;
-  checkpoint.checksum = undefined;
-  if (calculateChecksum(checkpoint) !== savedChecksum) {
-    await clearCheckpoint(jobId);
-    throw new CheckpointCorruptedError(jobId);
-  }
-  checkpoint.checksum = savedChecksum;
+  const { checksum: _, ...checkpointWithoutChecksum } = checkpoint;
+  const calculatedChecksum = calculateChecksum(checkpointWithoutChecksum);
 
+  if (calculatedChecksum !== savedChecksum) {
+    logger.error(
+      { jobId, savedChecksum, calculatedChecksum },
+      'Checkpoint checksum mismatch, data may be corrupted'
+    );
+    await clearCheckpoint(jobId);
+    throw new CheckpointCorruptedError(jobId, { savedChecksum, calculatedChecksum });
+  }
+
+  logger.info({ jobId, stage: checkpoint.stage }, 'Checkpoint loaded successfully');
   return checkpoint;
 }
 ```
@@ -355,10 +405,29 @@ export async function clearCheckpoint(jobId: string): Promise<void> {
 ```typescript
 import crypto from 'crypto';
 
+/**
+ * Recursively sorts object keys for deterministic serialization.
+ * Arrays and primitive values are preserved as-is.
+ */
+function sortObjectKeys(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sortObjectKeys);
+  }
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    sorted[key] = sortObjectKeys((value as Record<string, unknown>)[key]);
+  }
+  return sorted;
+}
+
 export function calculateChecksum(
   checkpoint: Omit<Checkpoint, 'checksum'>
 ): string {
-  const serialized = JSON.stringify(checkpoint, Object.keys(checkpoint).sort());
+  const sorted = sortObjectKeys(checkpoint);
+  const serialized = JSON.stringify(sorted);
   return crypto.createHash('md5').update(serialized).digest('hex');
 }
 ```

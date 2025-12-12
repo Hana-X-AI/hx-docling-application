@@ -358,14 +358,26 @@ export function UploadForm() {
       });
 
       if (!response.ok) {
-        throw new Error('Upload failed');
+        // Parse structured error envelope from server
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.userMessage || errorData.message || 'Upload failed';
+        const errorCode = errorData.code ? ` (${errorData.code})` : '';
+
+        form.setError('file', {
+          message: `${errorMessage}${errorCode}`,
+        });
+        return;
       }
 
       const result = await response.json();
-      console.log('Job created:', result.jobId);
+      // TODO: Navigate to job page or start SSE progress monitoring
+      // Example: router.push(`/jobs/${result.jobId}`) or startSSEConnection(result.jobId)
+      // For now, update app state with the jobId for the next sprint integration
+      form.reset();
     } catch (error) {
+      // Network error or unexpected failure
       form.setError('file', {
-        message: 'Upload failed. Please try again.',
+        message: 'Network error. Please check your connection and try again.',
       });
     }
   };

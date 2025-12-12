@@ -17,11 +17,41 @@
 
 Sprint 1.5b establishes the Server-Sent Events (SSE) infrastructure for real-time progress tracking. This includes SSE connection management, event buffering, checkpoint management for recovery, and progress interpolation for smooth UI updates.
 
-**Total Sprint Effort**: 4.0 hours
+**Total Sprint Effort**: 4.33 hours (4 hours 20 minutes)
 
 ---
 
-## Shared Types (Required for TypeScript Compilation)
+## Task WIL-1.5b-000: Create Shared Types (Pre-Sprint Prerequisite)
+
+### Description
+
+Create shared TypeScript types required for all Sprint 1.5b code to compile correctly. These types address CodeRabbit defects DEF-001, DEF-002, and DEF-003 and must be implemented before any other sprint tasks begin.
+
+### Acceptance Criteria
+
+- [ ] `Progress` interface defined in `src/types/progress.ts`
+- [ ] `AppError` class defined in `src/types/errors.ts`
+- [ ] `ProcessResult` interface defined in `src/types/process.ts`
+- [ ] All types exported from `src/types/index.ts`
+- [ ] TypeScript compilation succeeds with type imports
+
+### Dependencies
+
+- None (this is the foundation task)
+
+### Effort Estimate
+
+**Duration**: 10 minutes
+**Complexity**: Low
+
+### Deliverables
+
+1. `src/types/progress.ts` - Progress interface
+2. `src/types/errors.ts` - AppError class
+3. `src/types/process.ts` - ProcessResult interface
+4. `src/types/index.ts` - Central export file
+
+### Technical Notes
 
 The following shared types must be defined for all Sprint 1.5b code to compile correctly. These address CodeRabbit defects DEF-001, DEF-002, and DEF-003.
 
@@ -2053,26 +2083,27 @@ describe('ProgressInterpolator', () => {
 
 | Task ID | Title | Effort | Dependencies |
 |---------|-------|--------|--------------|
-| WIL-1.5b-001 | SSE Connection Manager | 30m | Sprint 1.5a |
+| WIL-1.5b-000 | Create Shared Types (Pre-Sprint Prerequisite) | 10m | None |
+| WIL-1.5b-001 | SSE Connection Manager | 30m | WIL-1.5b-000, Sprint 1.5a |
 | WIL-1.5b-002 | Exponential Backoff Reconnection Logic | 25m | WIL-1.5b-001 |
-| WIL-1.5b-003 | Polling Fallback Mechanism | 30m | WIL-1.5b-002 |
+| WIL-1.5b-003 | Polling Fallback Mechanism | 30m | WIL-1.5b-000, WIL-1.5b-002 |
 | WIL-1.5b-004 | Redis Event Buffering for Last-Event-ID | 25m | WIL-1.5b-001 |
-| WIL-1.5b-005 | State Synchronization on Reconnect | 20m | WIL-1.5b-004 |
-| WIL-1.5b-006 | Process Route POST Handler | 30m | Sprint 1.5a, Sprint 1.2 |
+| WIL-1.5b-005 | State Synchronization on Reconnect | 20m | WIL-1.5b-000, WIL-1.5b-004 |
+| WIL-1.5b-006 | Process Route POST Handler | 30m | WIL-1.5b-000, Sprint 1.5a, Sprint 1.2 |
 | WIL-1.5b-007 | SSE Streaming Response Implementation | 30m | WIL-1.5b-001, WIL-1.5b-004, WIL-1.5b-006 |
 | WIL-1.5b-008 | Last-Event-ID Reconnection Support | 20m | WIL-1.5b-004, WIL-1.5b-007 |
-| WIL-1.5b-009 | Checkpoint Manager Implementation | 45m | Database schema |
+| WIL-1.5b-009 | Checkpoint Manager Implementation | 45m | WIL-1.5b-000, Database schema |
 | WIL-1.5b-010 | Progress Interpolation with Monotonic Guarantee | 30m | WIL-1.5b-007 |
-| WIL-1.5b-011 | ProgressCard Component | 25m | WIL-1.5b-010 |
+| WIL-1.5b-011 | ProgressCard Component | 25m | WIL-1.5b-000, WIL-1.5b-010 |
 | WIL-1.5b-012 | Loading State Variants | 15m | WIL-1.5b-011 |
 | WIL-1.5b-013 | Reconnection Overlay | 10m | WIL-1.5b-002 |
-| WIL-1.5b-014 | useSSE Hook | 20m | WIL-1.5b-001 through WIL-1.5b-004 |
-| WIL-1.5b-015 | useProcess Hook | 20m | WIL-1.5b-014, WIL-1.5b-010 |
+| WIL-1.5b-014 | useSSE Hook | 20m | WIL-1.5b-000, WIL-1.5b-001 through WIL-1.5b-004 |
+| WIL-1.5b-015 | useProcess Hook | 20m | WIL-1.5b-000, WIL-1.5b-014, WIL-1.5b-010 |
 | WIL-1.5b-016 | Checkpoint Manager Unit Tests | 20m | WIL-1.5b-009 |
 | WIL-1.5b-017 | Progress Interpolation Unit Tests | 15m | WIL-1.5b-010 |
 
-**Total Tasks**: 17
-**Total Effort**: 4 hours 10 minutes
+**Total Tasks**: 18
+**Total Effort**: 4 hours 20 minutes
 
 ---
 
@@ -2095,8 +2126,9 @@ describe('ProgressInterpolator', () => {
 | v1.0.0 | 2025-12-12 | Initial task file creation | William Chen |
 | v1.1.0 | 2025-12-12 | Fixed DEF-001 through DEF-009: Type definitions, error handling, EventSource fixes | William Chen |
 | v1.2.0 | 2025-12-12 | Fixed DEF-020: useSSE options dependency array to prevent unnecessary reconnects | William Chen |
+| v1.3.0 | 2025-12-12 | Added WIL-1.5b-000 shared types task as blocking dependency for all tasks importing types | William Chen |
 
 ---
 
-**Version:** v1.2.0
+**Version:** v1.3.0
 **Last Updated:** 2025-12-12

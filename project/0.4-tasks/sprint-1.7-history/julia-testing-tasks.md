@@ -39,7 +39,8 @@ Write comprehensive integration tests for the history API route covering paginat
 - [ ] Test pagination max (50 items)
 - [ ] Test pagination page parameter
 - [ ] Test sorted by createdAt DESC
-- [ ] Test returns 404 for unauthorized access
+- [ ] Test returns 401 for missing session (no authentication)
+- [ ] Test returns empty array for different session (no jobs visible)
 - [ ] Test empty result handling
 - [ ] Test includes job status and metadata
 - [ ] Coverage >= 90% for history route
@@ -97,12 +98,25 @@ describe('GET /api/v1/history', () => {
       });
     });
 
-    it('returns 401 without session', async () => {
+    it('returns 401 when no session provided', async () => {
       const request = new Request('http://localhost/api/v1/history');
+      // No session cookie provided
 
       const response = await GET(request);
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(401); // No authentication
+    });
+
+    it('returns empty array for wrong session (no jobs visible)', async () => {
+      const request = new Request('http://localhost/api/v1/history', {
+        headers: { Cookie: 'session=different-session' },
+      });
+
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.jobs).toHaveLength(0); // No jobs belong to this session
     });
   });
 
@@ -229,8 +243,9 @@ Write comprehensive integration tests for the job cancellation endpoint (POST /a
 - [ ] Test partial results cleaned if configured
 - [ ] Test cannot cancel COMPLETED job
 - [ ] Test cannot cancel CANCELLED job
-- [ ] Test session authorization required
-- [ ] Test 404 for non-existent job
+- [ ] Test returns 401 for missing session (no authentication)
+- [ ] Test returns 404 for wrong session (job not visible to requester)
+- [ ] Test returns 404 for non-existent job
 - [ ] Coverage >= 95% for cancel endpoint
 
 #### Technical Notes
@@ -455,7 +470,30 @@ describe('POST /api/v1/jobs/{id}/cancel', () => {
   });
 
   describe('Authorization', () => {
-    it('requires session authorization', async () => {
+    it('returns 401 when no session provided', async () => {
+      await prisma.job.create({
+        data: {
+          id: testJobId,
+          sessionId: testSessionId,
+          status: 'PROCESSING',
+          fileName: 'test.pdf',
+        },
+      });
+
+      const request = new Request(
+        `http://localhost/api/v1/jobs/${testJobId}/cancel`,
+        {
+          method: 'POST',
+          // No session cookie
+        }
+      );
+
+      const response = await POST(request, { params: { id: testJobId } });
+
+      expect(response.status).toBe(401); // No authentication
+    });
+
+    it('returns 404 for wrong session (job not visible)', async () => {
       await prisma.job.create({
         data: {
           id: testJobId,

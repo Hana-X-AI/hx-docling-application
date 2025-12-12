@@ -182,11 +182,20 @@ describe('API Security Tests', () => {
     it('should sanitize filename for path traversal', async () => {
       const maliciousName = '../../../etc/passwd';
       // Test file upload with malicious filename
+      const response = await fetch('/api/v1/upload', {
+        method: 'POST',
+        body: createFormData(maliciousName),
+      });
+      expect(response.status).toBe(400);
+      const body = await response.json();
+      expect(body.error.code).toBe('E100');
     });
 
     it('should reject SQL injection in query params', async () => {
       const response = await fetch('/api/v1/history?sortBy=createdAt; DROP TABLE jobs;--');
       expect(response.status).toBe(400);
+      const body = await response.json();
+      expect(body.error.code).toBe('E100');
     });
   });
 
@@ -194,7 +203,11 @@ describe('API Security Tests', () => {
     it('should not expose jobs from other sessions', async () => {
       // Create job with session A
       // Try to access with session B
+      const response = await fetchWithSessionB(`/api/v1/jobs/${jobFromSessionA.id}`);
       // Expect 404 (not 403 for security)
+      expect(response.status).toBe(404);
+      const body = await response.json();
+      expect(body.error.code).toBe('E501');
     });
   });
 });
@@ -279,27 +292,31 @@ describe('Job State Machine Transitions', () => {
 
   describe('Invalid Transitions', () => {
     it.each([
-      ['COMPLETE', 'cancel'],
-      ['CANCELLED', 'cancel'],
-      ['ERROR', 'cancel'],
-    ])('should reject %s -> cancel', async (fromState, action) => {
+      ['COMPLETE', 'cancel', 'E702'],
+      ['CANCELLED', 'cancel', 'E702'],
+      ['ERROR', 'cancel', 'E702'],
+    ])('should reject %s -> cancel with %s', async (fromState, action, expectedCode) => {
       const job = await createJobInState(fromState);
       const response = await fetch(`/api/v1/jobs/${job.id}/cancel`, {
         method: 'POST',
       });
       expect(response.status).toBe(409);
+      const body = await response.json();
+      expect(body.error.code).toBe(expectedCode);
     });
 
     it.each([
-      ['PENDING', 'resume'],
-      ['PROCESSING', 'resume'],
-      ['COMPLETE', 'resume'],
-    ])('should reject %s -> resume', async (fromState, action) => {
+      ['PENDING', 'resume', 'E703'],
+      ['PROCESSING', 'resume', 'E703'],
+      ['COMPLETE', 'resume', 'E703'],
+    ])('should reject %s -> resume with %s', async (fromState, action, expectedCode) => {
       const job = await createJobInState(fromState);
       const response = await fetch(`/api/v1/jobs/${job.id}/resume`, {
         method: 'POST',
       });
       expect(response.status).toBe(409);
+      const body = await response.json();
+      expect(body.error.code).toBe(expectedCode);
     });
   });
 });

@@ -705,6 +705,208 @@ export async function isResumable(job: Job): Promise<boolean> {
 - Test both success and error paths
 - Test environment variable handling (CLEANUP_ON_CANCEL)
 
+**Required Success Path Tests** (ensure each major flow is demonstrated):
+```typescript
+// cancel.test.ts - Success path tests
+describe('Cancel Success Paths', () => {
+  it('cancels job from PENDING state', async () => {
+    // Setup: job with status='PENDING'
+    const job = await prisma.job.create({
+      data: { sessionId: 'test-session', status: 'PENDING', inputType: 'FILE' },
+    });
+
+    const response = await POST(request, { params: { id: job.id } });
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.status).toBe('CANCELLED');
+    expect(data.cancelledAt).toBeDefined();
+
+    // Verify SSE event published
+    expect(mockRedisPublish).toHaveBeenCalledWith(
+      `job:${job.id}:events`,
+      expect.stringContaining('"event":"cancelled"')
+    );
+  });
+
+  it('cancels job from PROCESSING state and aborts MCP request', async () => {
+    // Setup: job with status='PROCESSING' and active MCP request
+    const job = await prisma.job.create({
+      data: { sessionId: 'test-session', status: 'PROCESSING', inputType: 'FILE' },
+    });
+    const mockAbortController = new AbortController();
+    AbortRegistry.register(job.id, mockAbortController);
+
+    const response = await POST(request, { params: { id: job.id } });
+
+    expect(response.status).toBe(200);
+    expect(mockAbortController.signal.aborted).toBe(true);
+    expect(AbortRegistry.has(job.id)).toBe(false); // Cleaned up
+  });
+
+  it('cleans up partial results when CLEANUP_ON_CANCEL=true', async () => {
+    process.env.CLEANUP_ON_CANCEL = 'true';
+    const job = await prisma.job.create({
+      data: {
+        sessionId: 'test-session',
+        status: 'PROCESSING',
+        inputType: 'FILE',
+        filePath: '/tmp/uploads/test.pdf',
+      },
+    });
+
+    await POST(request, { params: { id: job.id } });
+
+    // Verify file cleanup called
+    expect(mockFs.unlink).toHaveBeenCalledWith('/tmp/uploads/test.pdf');
+  });
+
+  it('preserves partial results when CLEANUP_ON_CANCEL=false', async () => {
+    process.env.CLEANUP_ON_CANCEL = 'false';
+    const job = await prisma.job.create({
+      data: {
+        sessionId: 'test-session',
+        status: 'PROCESSING',
+        inputType: 'FILE',
+        filePath: '/tmp/uploads/test.pdf',
+      },
+    });
+
+    await POST(request, { params: { id: job.id } });
+
+    // Verify file NOT deleted
+    expect(mockFs.unlink).not.toHaveBeenCalled();
+  });
+});
+
+// resume.test.ts - Success path tests
+describe('Resume Success Paths', () => {
+  it('resumes job from uploaded stage', async () => {
+    // Setup: job with checkpoint at 'uploaded' stage
+    const checkpoint = {
+      stage: 'uploaded',
+      progress: 15,
+      filePath: '/tmp/uploads/test.pdf',
+      checksum: 'valid-checksum',
+      expiresAt: Date.now() + 3600000, // 1 hour from now
+    };
+    const job = await prisma.job.create({
+      data: {
+        sessionId: 'test-session',
+        status: 'ERROR',
+        inputType: 'FILE',
+        checkpointData: checkpoint,
+      },
+    });
+
+    const response = await POST(request, { params: { id: job.id } });
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.status).toBe('PROCESSING');
+    expect(data.currentStage).toBe('uploaded');
+
+    // Verify processing resumes from checkpoint
+    expect(mockMcpClient.invoke).toHaveBeenCalledWith(
+      'convert_pdf',
+      expect.objectContaining({ file_path: '/tmp/uploads/test.pdf' })
+    );
+  });
+
+  it('resumes job from converted stage (skips conversion)', async () => {
+    // Setup: job with checkpoint at 'converted' stage
+    const checkpoint = {
+      stage: 'converted',
+      progress: 50,
+      doclingDocument: { /* partial DoclingDocument */ },
+      checksum: 'valid-checksum',
+      expiresAt: Date.now() + 3600000,
+    };
+    const job = await prisma.job.create({
+      data: {
+        sessionId: 'test-session',
+        status: 'ERROR',
+        inputType: 'FILE',
+        checkpointData: checkpoint,
+      },
+    });
+
+    const response = await POST(request, { params: { id: job.id } });
+
+    expect(response.status).toBe(200);
+
+    // Verify conversion skipped, export started
+    expect(mockMcpClient.invoke).not.toHaveBeenCalledWith('convert_pdf', expect.anything());
+    expect(mockMcpClient.invoke).toHaveBeenCalledWith(
+      'export_markdown',
+      expect.objectContaining({ document: checkpoint.doclingDocument })
+    );
+  });
+
+  it('resumes job from partial export stage', async () => {
+    // Setup: job with checkpoint at 'export_markdown' stage (markdown done, HTML pending)
+    const checkpoint = {
+      stage: 'export_markdown',
+      progress: 70,
+      doclingDocument: { /* DoclingDocument */ },
+      completedExports: ['markdown'],
+      partialResults: { markdown: '# Document Title\n...' },
+      checksum: 'valid-checksum',
+      expiresAt: Date.now() + 3600000,
+    };
+    const job = await prisma.job.create({
+      data: {
+        sessionId: 'test-session',
+        status: 'ERROR',
+        inputType: 'FILE',
+        checkpointData: checkpoint,
+      },
+    });
+
+    const response = await POST(request, { params: { id: job.id } });
+
+    expect(response.status).toBe(200);
+
+    // Verify markdown export skipped, HTML export started
+    expect(mockMcpClient.invoke).not.toHaveBeenCalledWith('export_markdown', expect.anything());
+    expect(mockMcpClient.invoke).toHaveBeenCalledWith('export_html', expect.anything());
+  });
+});
+
+// State transition tests
+describe('State Transition Validation', () => {
+  it('verifies CANCELLED is a terminal state', async () => {
+    const job = await prisma.job.create({
+      data: { sessionId: 'test-session', status: 'CANCELLED', inputType: 'FILE' },
+    });
+
+    // Attempt to cancel already-cancelled job
+    const cancelResponse = await POST(cancelRequest, { params: { id: job.id } });
+    expect(cancelResponse.status).toBe(409);
+
+    // Attempt to resume cancelled job
+    const resumeResponse = await POST(resumeRequest, { params: { id: job.id } });
+    expect(resumeResponse.status).toBe(409);
+  });
+
+  it('validates cancellable states transition correctly', async () => {
+    const cancellableStates = ['PENDING', 'UPLOADING', 'PROCESSING', 'RETRY_1', 'RETRY_2', 'RETRY_3'];
+
+    for (const status of cancellableStates) {
+      const job = await prisma.job.create({
+        data: { sessionId: 'test-session', status, inputType: 'FILE' },
+      });
+
+      const response = await POST(request, { params: { id: job.id } });
+      expect(response.status).toBe(200);
+
+      const updated = await prisma.job.findUnique({ where: { id: job.id } });
+      expect(updated?.status).toBe('CANCELLED');
+    }
+  });
+});
+```
+
 **Required Error Path Tests** (ensure each error code is validated):
 ```typescript
 // resume.test.ts - Error code validation tests

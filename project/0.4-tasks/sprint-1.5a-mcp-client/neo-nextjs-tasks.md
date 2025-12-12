@@ -229,6 +229,7 @@ import type { MCPToolName, MCPToolCallParams, JsonRpcError } from '@/types/mcp';
 interface MCPCallOptions {
   timeout?: number;
   requestId?: string;
+  fileSize?: number; // For size-based timeout calculation
 }
 
 /**
@@ -240,7 +241,7 @@ export async function executeMCPTool<T extends MCPToolName>(
   options: MCPCallOptions = {}
 ): Promise<{ success: true; result: unknown } | { success: false; error: JsonRpcError }> {
   const requestId = options.requestId || randomUUID();
-  const timeout = options.timeout || getDefaultTimeout(toolName);
+  const timeout = options.timeout || getDefaultTimeout(toolName, options.fileSize);
 
   try {
     const client = await MCPClient.getInstance();
@@ -287,12 +288,27 @@ export function createMCPResponse(
   });
 }
 
-function getDefaultTimeout(toolName: MCPToolName): number {
-  // URL conversion has fixed timeout
+/**
+ * Get timeout based on tool name and optional file size.
+ * Size-based timeouts per james-mcp-tasks.md specification:
+ * - < 10MB: 60s
+ * - 10-50MB: 180s
+ * - >= 50MB: 300s
+ */
+function getDefaultTimeout(toolName: MCPToolName, fileSize?: number): number {
+  // URL conversion has fixed timeout (no file size)
   if (toolName === 'convert_url') return 30000;
 
-  // Other tools use size-based timeout (set by caller)
-  return 60000; // Default 60s
+  // Size-based timeout for file processing tools
+  if (fileSize !== undefined) {
+    const MB = 1024 * 1024;
+    if (fileSize >= 50 * MB) return 300000; // 300s for >= 50MB
+    if (fileSize >= 10 * MB) return 180000; // 180s for 10-50MB
+    return 60000; // 60s for < 10MB
+  }
+
+  // Default when file size unknown (use max to be safe)
+  return 60000;
 }
 
 function isJsonRpcError(error: unknown): error is JsonRpcError {

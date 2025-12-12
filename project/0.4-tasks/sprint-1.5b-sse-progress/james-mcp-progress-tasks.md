@@ -178,7 +178,7 @@ Sprint 1.5b is primarily led by William for SSE streaming infrastructure. James 
 - [ ] Checkpoint stages align with MCP processing flow
 - [ ] Store DoclingDocument at 'converted' checkpoint
 - [ ] Store export results at export_* checkpoints
-- [ ] Checkpoint data stored in PostgreSQL `job_checkpoint` table
+- [ ] Checkpoint data stored in PostgreSQL `Job.checkpointData` JSONB field
 - [ ] Resume from latest checkpoint on retry
 
 **Dependencies**: JAM-1.5b-004, William's checkpoint manager coordination
@@ -189,11 +189,12 @@ Sprint 1.5b is primarily led by William for SSE streaming infrastructure. James 
 - `/home/agent0/hx-docling-application/src/lib/processing/checkpoints.ts`
 
 **Technical Notes**:
-- Coordinate with Trinity on database schema for checkpoints
+- Uses `Job.checkpointData` JSONB field per spec (0.3.1-detailed-specification.md §8.5)
 - Coordinate with William on checkpoint manager interface
 - Checkpoints enable RETRY_* state transitions without re-running MCP
 - Serialize DoclingDocument as JSON for storage
 - Consider size limits (DoclingDocument can be 1-50KB)
+- Use `prisma.job.update()` with `checkpointData` field, not a separate table
 
 ---
 

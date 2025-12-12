@@ -59,7 +59,7 @@ Document all Redis key patterns used by the application in CLAUDE.md. This enabl
 
 ### Rate Limiting Keys
 - Pattern: `ratelimit:{sessionId}:{endpoint}`
-- TTL: Dynamic (window size)
+- TTL: 60 seconds (per rate limit window)
 - Structure: Sorted set with timestamps as scores
 - Example: `ratelimit:550e8400:process`
 

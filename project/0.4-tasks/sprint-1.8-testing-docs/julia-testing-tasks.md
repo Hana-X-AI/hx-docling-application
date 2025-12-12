@@ -14,7 +14,8 @@
 
 Sprint 1.8 is the final quality assurance sprint where I serve as the Sprint Lead. This sprint consolidates all testing efforts, fills coverage gaps, implements comprehensive E2E tests, security tests, state machine tests, and accessibility audits. The goal is to achieve production-ready quality with all quality gates passing.
 
-**Duration**: 6.0 hours (Sessions 9-11)
+**Planned Duration**: 6.0 hours (Sessions 9-11)
+**Task Effort Total**: 10.0 hours (see task breakdown below)
 **Lead**: Julia Santos (`@julia`)
 **Support**: Neo (`@neo`), Trinity (`@trinity`), William (`@william`)
 **Review**: Agent Zero (`@agent-zero`)
@@ -912,8 +913,18 @@ Write comprehensive security tests covering SSRF prevention, input validation, X
 
 #### Technical Notes
 
+**Test Layer Guidance:**
+
+- **Unit tests** (`src/**/__tests__/*.test.ts`): Call route handlers directly with `NextRequest`/`Request`, no server required
+- **Integration tests** (`test/integration/*.test.ts`): Use MSW to mock external services, call handlers directly
+- **E2E tests** (`test/e2e/*.spec.ts`): Use Playwright with running dev server, real `fetch()` calls OK
+
 ```typescript
-// test/security/ssrf.test.ts - expanded
+// test/security/ssrf.test.ts - INTEGRATION TEST (calls route handler directly)
+import { describe, it, expect } from 'vitest';
+import { POST } from '@/app/api/v1/upload/route';
+import { NextRequest } from 'next/server';
+
 describe('Security: SSRF Prevention Complete', () => {
   const SSRF_PATTERNS = [
     // Standard localhost
@@ -951,11 +962,14 @@ describe('Security: SSRF Prevention Complete', () => {
 
   SSRF_PATTERNS.forEach((url) => {
     it(`blocks ${url}`, async () => {
-      const response = await fetch('/api/v1/upload', {
+      // Call route handler directly with NextRequest (no server needed)
+      const request = new NextRequest('http://localhost/api/v1/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
+
+      const response = await POST(request);
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -964,25 +978,28 @@ describe('Security: SSRF Prevention Complete', () => {
   });
 });
 
-// test/security/headers.test.ts
-describe('Security Headers', () => {
-  it('returns CSP header', async () => {
-    const response = await fetch('/');
-    const csp = response.headers.get('Content-Security-Policy');
+// test/security/headers.test.ts - E2E TEST (requires running server)
+// Note: Security headers are set by Next.js middleware/config, so E2E is appropriate
+import { test, expect } from '@playwright/test';
+
+test.describe('Security Headers (E2E)', () => {
+  test('returns CSP header', async ({ request }) => {
+    const response = await request.get('/');
+    const csp = response.headers()['content-security-policy'];
 
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("script-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
   });
 
-  it('returns X-Frame-Options', async () => {
-    const response = await fetch('/');
-    expect(response.headers.get('X-Frame-Options')).toBe('DENY');
+  test('returns X-Frame-Options', async ({ request }) => {
+    const response = await request.get('/');
+    expect(response.headers()['x-frame-options']).toBe('DENY');
   });
 
-  it('returns X-Content-Type-Options', async () => {
-    const response = await fetch('/');
-    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+  test('returns X-Content-Type-Options', async ({ request }) => {
+    const response = await request.get('/');
+    expect(response.headers()['x-content-type-options']).toBe('nosniff');
   });
 });
 ```
@@ -1238,9 +1255,10 @@ echo "=== All Quality Gates Passed ==="
 | Metric | Target | Notes |
 |--------|--------|-------|
 | Total Tasks | 14 | |
-| Total Effort | 10.0 hours | ~6.0h allocated in plan |
-| Session 1 Tasks | 6 | Unit/Integration tests |
-| Session 2 Tasks | 8 | E2E, Security, A11y, QA |
+| Task Effort Total | 10.0 hours | Sum of all task estimates |
+| Planned Duration | 6.0 hours | Allocated sprint sessions (9-11) |
+| Session 1 Tasks | 6 | Unit/Integration tests (~4.75h effort) |
+| Session 2 Tasks | 8 | E2E, Security, A11y, QA (~5.25h effort) |
 
 ### Coverage Targets (Phase 1 Complete)
 

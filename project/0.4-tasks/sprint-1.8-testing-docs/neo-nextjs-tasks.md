@@ -19,11 +19,13 @@ For component testing and documentation reference, the **hx-shadcn MCP Server** 
 | Property | Value |
 |----------|-------|
 | **Service Descriptor** | `project/0.8-references/hx-shadcn-service-descriptor.md` |
-| **Host** | hx-shadcn.hx.dev.local (192.168.10.229) |
-| **Port** | 7423 |
-| **SSE Endpoint** | `http://hx-shadcn.hx.dev.local:7423/sse` |
+| **Host** | `${HX_SHADCN_HOST}` (see service descriptor or infrastructure runbook) |
+| **Port** | `${HX_SHADCN_PORT}` |
+| **SSE Endpoint** | `${HX_SHADCN_SSE_URL}` |
 | **Protocol** | SSE + MCP (Model Context Protocol) |
-| **Status** | OPERATIONAL |
+| **Status** | See service descriptor for current status |
+
+> **Note:** Infrastructure details (hosts, IPs, ports) are environment-specific. Refer to `project/0.8-references/hx-shadcn-service-descriptor.md` or the private infrastructure runbook for actual values.
 
 **Available MCP Tools:**
 - `list_components` - List all available shadcn/ui components for React framework

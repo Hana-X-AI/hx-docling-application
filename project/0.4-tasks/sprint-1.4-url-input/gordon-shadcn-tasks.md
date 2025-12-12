@@ -127,9 +127,52 @@ export function UrlInput({ disabled, onUrlSubmit }: UrlInputProps) {
       await onUrlSubmit(data.url);
       form.reset(); // Clear form after successful submission
     } catch (error) {
-      form.setError('url', {
-        message: error instanceof Error ? error.message : 'URL processing failed',
-      });
+      // Map API error codes to safe user-facing messages
+      const errorMessages: Record<string, string> = {
+        E104: 'This URL is not allowed for security reasons',
+        E105: 'The URL request timed out. Please try again',
+        E106: 'Unable to fetch the document from this URL',
+        E107: 'The document format is not supported',
+      };
+
+      let userMessage = 'URL processing failed';
+
+      // Handle structured API error envelope: { error: { code, userMessage } }
+      if (error && typeof error === 'object') {
+        const err = error as Record<string, unknown>;
+
+        // Check for structured error payload
+        if (err.error && typeof err.error === 'object') {
+          const errorPayload = err.error as { code?: string; userMessage?: string };
+          if (errorPayload.userMessage) {
+            userMessage = errorPayload.userMessage;
+          } else if (errorPayload.code && errorMessages[errorPayload.code]) {
+            userMessage = errorMessages[errorPayload.code];
+          }
+        }
+        // Handle Response objects with JSON error body
+        else if (err instanceof Response) {
+          try {
+            const body = await err.json() as { error?: { code?: string; userMessage?: string } };
+            if (body.error?.userMessage) {
+              userMessage = body.error.userMessage;
+            } else if (body.error?.code && errorMessages[body.error.code]) {
+              userMessage = errorMessages[body.error.code];
+            }
+          } catch {
+            // JSON parsing failed, use default message
+          }
+        }
+        // Handle Error objects with code property (custom ApiError)
+        else if (err instanceof Error && 'code' in err) {
+          const code = (err as Error & { code?: string }).code;
+          if (code && errorMessages[code]) {
+            userMessage = errorMessages[code];
+          }
+        }
+      }
+
+      form.setError('url', { message: userMessage });
     }
   };
 
@@ -293,6 +336,7 @@ export function DocumentInputManager() {
               <>
                 File selected. URL input is disabled.{' '}
                 <button
+                  type="button"
                   onClick={clearInputs}
                   className="underline hover:no-underline"
                   aria-label="Clear file and enable URL input"
@@ -305,6 +349,7 @@ export function DocumentInputManager() {
               <>
                 URL entered. File upload is disabled.{' '}
                 <button
+                  type="button"
                   onClick={clearInputs}
                   className="underline hover:no-underline"
                   aria-label="Clear URL and enable file upload"
@@ -343,8 +388,20 @@ export function DocumentInputManager() {
           <UrlInput
             disabled={activeInput === 'file'}
             onUrlSubmit={async (url) => {
-              // Sprint 1.4 Task 5: API integration
-              console.log('Processing URL:', url);
+              // TODO: Sprint 1.4 Task 5 - Integrate with document processing API
+              // Example implementation:
+              // try {
+              //   const response = await processDocumentUrl(url);
+              //   if (response.jobId) {
+              //     // Navigate to results or update state
+              //     router.push(`/results/${response.jobId}`);
+              //   }
+              // } catch (error) {
+              //   // Handle API errors (E104 SSRF, E105 timeout, etc.)
+              //   if (error instanceof ApiError) {
+              //     form.setError('url', { message: error.message });
+              //   }
+              // }
             }}
           />
         </CardContent>

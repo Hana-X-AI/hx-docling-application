@@ -159,7 +159,8 @@ describe('MCPClient', () => {
 
       await expect(client.initialize()).rejects.toThrow(MCPError);
       await expect(client.initialize()).rejects.toMatchObject({
-        code: 'E205',
+        code: 'E205', // Server lacks tools capability
+        message: expect.stringContaining('tools capability'),
       });
     });
 
