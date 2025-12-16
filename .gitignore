@@ -35,6 +35,17 @@ coverage/
 # Review directories (all specialists and team reviews)
 **/reviews/
 
+# Large reference files
+project/0.8-references/DocLayNet_core.zip
+project/0.8-references/DocLayNet_extra.zip
+project/0.8-references/DocLayNet/
+project/0.8-references/agentic-design-patterns-docs-main/
+project/0.8-references/granite-docling-258M-WebGPU/
+
+# Test data files
+project/0.5-test/test-data/core-data/
+project/0.5-test/test-data/extra-file-data/
+
 # OS
 Thumbs.db
 .DS_Store

@@ -194,7 +194,7 @@ import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { calculateChecksum } from './checksum';
 import { CHECKPOINT_VERSION, CheckpointStage, Checkpoint } from './types';
-import { CheckpointSaveError } from './errors';
+import { CheckpointSaveError, CheckpointNotFoundError } from './errors';
 
 // Stage ordering for progression validation
 const STAGE_ORDER: Record<CheckpointStage, number> = {
@@ -219,7 +219,21 @@ export async function saveCheckpoint(
 ): Promise<void> {
   try {
     // Load existing checkpoint for merge (support partial updates)
-    const existing = await loadCheckpoint(jobId).catch(() => null);
+    // Handle checkpoint-not-found vs real errors explicitly
+    let existing: Checkpoint | null = null;
+    try {
+      existing = await loadCheckpoint(jobId);
+    } catch (error) {
+      // Only swallow "not found" errors - propagate real failures
+      if (error instanceof CheckpointNotFoundError) {
+        // No existing checkpoint - this is expected for new jobs
+        existing = null;
+      } else {
+        // Database/connection/corruption errors should propagate
+        logger.error({ jobId, error }, 'Failed to load existing checkpoint');
+        throw error;
+      }
+    }
 
     // Validate stage progression
     if (existing && !isValidStageProgression(existing.stage, stage)) {

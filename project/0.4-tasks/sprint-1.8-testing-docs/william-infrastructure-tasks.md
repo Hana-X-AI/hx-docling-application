@@ -59,9 +59,10 @@ Document all Redis key patterns used by the application in CLAUDE.md. This enabl
 
 ### Rate Limiting Keys
 - Pattern: `ratelimit:{sessionId}:{endpoint}`
-- TTL: 60 seconds (per rate limit window)
+- TTL: Equals the configured rate-limit window (default 60s for `/api/v1/process`)
 - Structure: Sorted set with timestamps as scores
 - Example: `ratelimit:550e8400:process`
+- **Implementation Note**: TTL MUST be set to the route's `windowMs` value, not hardcoded. Different endpoints may have different rate limit windows (e.g., `/health` may use 10s, `/process` may use 60s). Use the route configuration to determine TTL.
 
 ### SSE Event Buffer Keys
 - Pattern: `sse:events:{jobId}`
